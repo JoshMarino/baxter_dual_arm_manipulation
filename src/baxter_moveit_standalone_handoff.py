@@ -4,9 +4,11 @@ import sys
 import copy
 import rospy
 import geometry_msgs.msg
+import tf
 
 from std_msgs.msg import (Header, String)
 from geometry_msgs.msg import (PoseStamped, Pose, Point, Quaternion)
+from tf.transformations import euler_from_quaternion
 
 import moveit_commander
 import moveit_msgs.msg
@@ -86,10 +88,7 @@ if __name__ == '__main__':
 	pose_target_right.orientation.y = -0.5198
 	pose_target_right.orientation.z = -0.54332
 	pose_target_right.orientation.w = -0.33955
-	#pose_target_right.orientation.x = 0.5*(left_ee_pose.pose.orientation.x + right_ee_pose.pose.orientation.x)
-	#pose_target_right.orientation.y = 0.5*(left_ee_pose.pose.orientation.y + right_ee_pose.pose.orientation.y)
-	#pose_target_right.orientation.z = 0.5*(left_ee_pose.pose.orientation.z + right_ee_pose.pose.orientation.z)
-	#pose_target_right.orientation.w = 0.5*(left_ee_pose.pose.orientation.w + right_ee_pose.pose.orientation.w)
+
 
 	pose_target_left = geometry_msgs.msg.Pose()
 	pose_target_left.position.x = 0.5*(left_ee_pose.pose.position.x + right_ee_pose.pose.position.x)
@@ -99,19 +98,13 @@ if __name__ == '__main__':
 	pose_target_left.orientation.y = 0.1977
 	pose_target_left.orientation.z = -0.16912
 	pose_target_left.orientation.w = 0.67253
-	#pose_target_left.orientation.x = 0.5*(left_ee_pose.pose.orientation.x + right_ee_pose.pose.orientation.x)
-	#pose_target_left.orientation.y = 0.5*(left_ee_pose.pose.orientation.y + right_ee_pose.pose.orientation.y)
-	#pose_target_left.orientation.z = 0.5*(left_ee_pose.pose.orientation.z + right_ee_pose.pose.orientation.z)
-	#pose_target_left.orientation.w = 0.5*(left_ee_pose.pose.orientation.w + right_ee_pose.pose.orientation.w)
+
+
 
 	# Ensure position of the hand-off is in Baxter's work-space
 	if pose_target_right.position.x < 0.2: 	# x-position is not inside Baxter
 		pose_target_right.position.x = 0.2
 		pose_target_left.position.x = 0.2
-
-	# Set target poses for right_arm and left_arm groups
-	#group_right_arm.set_pose_target(pose_target_right)
-	#group_left_arm.set_pose_target(pose_target_left)
 
 
 
@@ -124,4 +117,15 @@ if __name__ == '__main__':
 
 	plan_both = group_both_arms.plan()
 
-	print plan_both
+
+	# If orientation might be the problem, alter both by a small amount and try planning again
+	if plan_both == False:
+
+		quaternion_right = (pose_target_right.orientation.x,pose_target_right.orientation.y,pose_target_right.orientation.z,pose_target_right.orientation.w)
+		(roll_r,pitch_r,yaw_r) = euler_from_quaternion(quaternion_right)
+
+		quaternion_left = (pose_target_left.orientation.x,pose_target_left.orientation.y,pose_target_left.orientation.z,pose_target_left.orientation.w)
+		(roll_l,pitch_l,yaw_l) = euler_from_quaternion(quaternion_left)
+
+
+	#print plan_both
