@@ -14,6 +14,7 @@ import moveit_commander
 import moveit_msgs.msg
 
 from moveit_commander import MoveGroupCommander
+#from openravepy import *
 
 
 
@@ -75,6 +76,9 @@ if __name__ == '__main__':
 	# Obtain current pose of left and right end-effector
 	left_ee_pose = group_left_arm.get_current_pose()
 	right_ee_pose = group_right_arm.get_current_pose()
+
+	P_left_euler = group_left_arm.get_current_rpy()
+	print "Left Euler Angles: ", P_left_euler
 
 	# Initialize separation distance of Baxter's grippers for the hand off
 	gripper_separation = 0.1
