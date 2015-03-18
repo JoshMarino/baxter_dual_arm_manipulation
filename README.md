@@ -18,14 +18,6 @@ Josh Marino
 
 [Future Work](#Future Work)
 
-[Project Extensions](#Project Extensions)
-
-[Torque Control](#Torque Control)
-
-[Mass Balance](#Mass Balance)
-
-[Joint_Trajectory_Controller](#Joint_Trajectory_Controller)
-
 
 
 #### Project Overview  <a name="Project Overview"></a>
