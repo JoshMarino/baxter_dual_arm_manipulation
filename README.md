@@ -1,7 +1,7 @@
-  Baxter Dual-arm Manipulation Optimization
+Baxter Dual-arm Manipulation Optimization
 =============================================
 
-             Josh Marino 
+Josh Marino 
 ---------------------------------------------
 
 
