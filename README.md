@@ -38,7 +38,7 @@ minimization = lambda q: (norm(JS_to_P(q[0:7],'left'), P_left_current) + norm(JS
 
 ```
 
-The norm function used for this calculation was the square root of sum of squares between the corresponding end-effector pose and the current end-effector pose. Inside the norm function, another function, JS_to_P(q,'limb') is called. This uses KDLKinematics from [pykdl_utils](http://wiki.ros.org/pykdl_utils) to solve forward kinematics for the set of joint angles, while returning the six component vector pose.
+The norm function used for this calculation was the square root of sum of squares between the corresponding end-effector pose and the current end-effector pose. Inside the norm function, another function, JS_to_P(q,'limb') is called. This uses KDLKinematics from [pykdl_utils](http://wiki.ros.org/pykdl_utils) to solve forward kinematics for the set of joint angles, while returning the six component vector pose. 
 
 ```p
 
@@ -66,6 +66,7 @@ def JS_to_P(q,arm):
 
 ```
 
+Also provided to the minimization function were rotational bounds for each joint, found in the URDF, and constraints to satisfy both end-effectors being a certain distance and rotation apart from one another. As for the distance apart from one another, 3 constraints were provided for the end-effectors being 0.0 m in the x-direction, 0.1 m in the y-direction, and 0.0 m in the z-direction. This would allow for a smooth handoff to occur by closing the gripper not initially holding the object, and then once closed, the other would release. Numerous attempts were made to determine the best constraints to ensure that the end-effector grippers would be 90 degrees away from one another. The best solution found was defining roll, pitch, yaw contraints from the rotation matrix that signifies the rotation from the right end-effector to the left end-effector. This rotation matrix was calculated by multiplying transpose(R_br)*(R_bl), where b stands for base frame, and r,l are for right and left gripper frames, respectively.
 
 
 #### Planning Trajectories to Optimal Handoff Location  <a name="Trajectory"></a>
