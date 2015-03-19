@@ -66,12 +66,17 @@ def JS_to_P(q,arm):
 
 ```
 
-Also provided to the minimization function were rotational bounds for each joint, found in the URDF, and constraints to satisfy both end-effectors being a certain distance and rotation apart from one another. As for the distance apart from one another, 3 constraints were provided for the end-effectors being 0.0 m in the x-direction, 0.1 m in the y-direction, and 0.0 m in the z-direction. This would allow for a smooth handoff to occur by closing the gripper not initially holding the object, and then once closed, the other would release. Numerous attempts were made to determine the best constraints to ensure that the end-effector grippers would be 90 degrees away from one another. The best solution found was defining roll, pitch, yaw contraints from the rotation matrix that signifies the rotation from the right end-effector to the left end-effector. This rotation matrix was calculated by multiplying transpose(R_br)*(R_bl), where b stands for base frame, and r,l are for right and left gripper frames, respectively.
+Also provided to the minimization function were rotational bounds for each joint, found in the URDF, and constraints to satisfy both end-effectors being a certain distance and rotation apart from one another. As for the distance apart from one another, 3 constraints were provided for the end-effectors being 0.0 m in the x-direction, 0.1 m in the y-direction, and 0.0 m in the z-direction. This would allow for a smooth handoff to occur by closing the gripper not initially holding the object, and then once closed, the other would release. 
+
+Numerous attempts were made to determine the best constraints to ensure that the end-effector grippers would be 90 degrees away from one another. The best solution found was defining roll, pitch, yaw contraints from the rotation matrix that signifies the rotation from the right end-effector to the left end-effector. This rotation matrix was calculated by multiplying transpose(R_br)*(R_bl), where b stands for base frame, and r, l are for right and left gripper frames, respectively.
 
 
 #### Planning Trajectories to Optimal Handoff Location  <a name="Trajectory"></a>
+After finding a set of joint angles that minimized the objective function while satisfying the constraints, collision-free paths had to be generated to move the end-effectors. [MoveIt!](http://moveit.ros.org/baxter-research-robot/) was used to generate the collision-free paths by setting the [move_group](https://github.com/davetcoleman/moveit_commander/blob/hydro-devel/src/moveit_commander/move_group.py) joint value goal targets. In order to ensure collision-free paths, the move_group 'both_arms' from the MoveGroupCommander was utilized. This allowed planning to occur for both end-effectors simultaneously, and collision-free planning was implemented.
 
-
+The following tutorials were beneficial to help understand Moveit! with Baxter:
+1. [Rethink Robotics Baxter MoveIt Tutorial](http://sdk.rethinkrobotics.com/wiki/MoveIt_Tutorial#Tutorial)
+2. [Move Group Interface Python](http://docs.ros.org/hydro/api/pr2_moveit_tutorials/html/planning/scripts/doc/move_group_python_interface_tutorial.html)
 
 
 #### Attempts to Better Optimize Handoff Location and Trajectory  <a name="Optimize"></a>
