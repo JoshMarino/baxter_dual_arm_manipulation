@@ -2,7 +2,7 @@
 
   <include file="$(find baxter_moveit_config)/launch/demo_baxter.launch"/>
 
-  <node name="baxter_moveit_planning" pkg="baxter_dual_arm_manipulation" type="baxter_moveit.py" respawn="false" output="screen">
+  <node name="baxter_moveit_planning" pkg="baxter_dual_arm_manipulation" type="minimize_using_SLSQP.py" respawn="false" output="screen">
   </node>
 
 </launch>
