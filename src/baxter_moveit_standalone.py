@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
 
 	#Call the planner to compute the plan and visualize it if successful.
-	#print "============ Generating plan for left arm"
+	print "============ Generating plan for left arm"
 	pose_target_left = geometry_msgs.msg.Pose()
 	pose_target_left.orientation.x = 0.69283
 	pose_target_left.orientation.y = 0.1977
@@ -80,13 +80,14 @@ if __name__ == '__main__':
 	pose_target_left.position.x = 0.81576
 	pose_target_left.position.y = 0.093893
 	pose_target_left.position.z = 0.2496
-	#group_left_arm.set_pose_target(pose_target_left)
+	group_left_arm.set_pose_target(pose_target_left)
 
 	#group_left_arm.set_position_target([0.75,0.27,0.35])
-	#plan_1eft = group_left_arm.plan()
+	plan_1eft = group_left_arm.plan()
+	#print "Trajectory time (nsec): ", plan_left.joint_trajectory.points[len(plan_left.joint_trajectory.points)-1].time_from_start
 
-
-	#print "============ Generating plan for right arm"
+	rospy.sleep(5)
+	print "============ Generating plan for right arm"
 	pose_target_right = geometry_msgs.msg.Pose()
 	pose_target_right.orientation.x = 0.56508
 	pose_target_right.orientation.y = -0.5198
@@ -95,12 +96,12 @@ if __name__ == '__main__':
 	pose_target_right.position.x = 0.72651
 	pose_target_right.position.y = -0.041037
 	pose_target_right.position.z = 0.19097
-	#group_right_arm.set_pose_target(pose_target_right)
+	group_right_arm.set_pose_target(pose_target_right)
 
 	#group_right_arm.set_position_target([0.75,-0.27,0.35])
-	#plan_right = group_right_arm.plan()
-
-
+	plan_right = group_right_arm.plan()
+	#print "Trajectory time (nsec): ", plan_right.joint_trajectory.points[len(plan_right.joint_trajectory.points)-1].time_from_start
+	rospy.sleep(5)
 
 
 	print "============ Generating plan for both arms"
@@ -109,3 +110,5 @@ if __name__ == '__main__':
 	group_both_arms.set_pose_target(pose_target_left, 'left_gripper')
 
 	plan_both = group_both_arms.plan()
+
+	print "Trajectory time (nsec): ", plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start

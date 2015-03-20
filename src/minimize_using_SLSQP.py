@@ -34,7 +34,7 @@ def InitializeMoveitCommander():
 
 	#Wait for RVIZ to initialize. This sleep is ONLY to allow Rviz to come up.
 	print "============ Waiting for RVIZ..."
-	rospy.sleep(2)
+	rospy.sleep(1)
 	print "============ Starting tutorial "
 
 	#Instantiate a PlanningSceneInterface object. This object is an interface to the world surrounding the robot.
@@ -67,6 +67,7 @@ def InitializeMoveitCommander():
 	P_left_current = np.array([[P_left_pose.pose.position.x],[P_left_pose.pose.position.y],[P_left_pose.pose.position.z],[P_left_euler[0]],[P_left_euler[1]],[P_left_euler[2]]])
 	P_right_current = np.array([[P_right_pose.pose.position.x],[P_right_pose.pose.position.y],[P_right_pose.pose.position.z],[P_right_euler[0]],[P_right_euler[1]],[P_right_euler[1]]])
 	print "\nCurrent pose of left and right EE: \n", np.transpose(P_left_current), "\n", np.transpose(P_right_current)
+
 
 
 
@@ -123,7 +124,7 @@ def JS_to_PrPlRrl(q):
 
 	roll,pitch,yaw = euler_from_matrix(R_rl, 'sxyz')
 
-	P = np.array([[x_left],[y_left],[z_left],[x_right],[y_right],[z_right],[roll],[pitch],[yaw]])
+	P = np.array([[x_left],[y_left],[z_left],[x_right],[y_right],[z_right],[roll],[pitch],[yaw],[R_right[0,0]],[R_left[0,1]],[R_right[1,0]],[R_left[1,1]]])
 
 	return P
 
@@ -161,7 +162,7 @@ def main():
 	bnds = ( (-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618), (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059),(-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618),  (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059)) # lower and upper bounds for each q (length 14)
 
 	# Constraint equality
-	Handoff_separation = np.array([[0.0],[0.1],[0.0],[0.0],[math.pi/2.],[math.pi]])
+	Handoff_separation = np.array([[0.0],[0.1],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
 	cons = ({'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[3,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[3,0]},
 			{'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[4,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[4,0]}, 
 			{'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[5,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[5,0]})
@@ -177,14 +178,24 @@ def main():
 			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - JS_to_PrPlRrl(q)[4,0] - Handoff_separation[1,0]},
 			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[2,0] - JS_to_PrPlRrl(q)[5,0] - Handoff_separation[2,0]})
 
-	cons4 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[6,0] - Handoff_separation[3,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[7,0] - Handoff_separation[4,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]})
+	cons4 = ({'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},
+			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0] - JS_to_PrPlRrl(q)[10,0]})
+
+	cons5 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - JS_to_PrPlRrl(q)[3,0] - Handoff_separation[0,0]}, 	#x-distance = 0.1*sin(acos(R_right[0,0])) //JS_to_PrPlRrl(q)[9,0]
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - JS_to_PrPlRrl(q)[4,0] - Handoff_separation[1,0]}, 	#y-distance = 0.1*cos(acos(R_right[0,0]))
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[2,0] - JS_to_PrPlRrl(q)[5,0] - Handoff_separation[2,0]}, 	#z-distance = 0
+			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},			   	#roll
+			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},				#pitch
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},							#yaw
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0] - JS_to_PrPlRrl(q)[10,0]},							#EE's pointed towards each other instead of away
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0] - JS_to_PrPlRrl(q)[12,0]})							#EE's pointed towards each other instead of away
+
 
 
 	# Minimization
-	result = minimize(minimization, x0, method='SLSQP', bounds=bnds, constraints=cons, tol=None, options={'maxiter': 10000})
-
+	result = minimize(minimization, x0, method='SLSQP', bounds=bnds, constraints=cons5, tol=None, options={'maxiter': 10000})
 
 
 
@@ -213,6 +224,13 @@ def main():
 
 	X_left,Y_left,Z_left = euler_from_matrix(R_left, 'sxyz')
 	X_right,Y_right,Z_right = euler_from_matrix(R_right, 'sxyz')
+
+	q = np.array([q_left[0],q_left[1],q_left[2],q_left[3],q_left[4],q_left[5],q_left	[6],q_right[0],q_right[1],q_right[2],q_right[3],q_right[4],q_right[5],q_right[6]])
+	P = JS_to_PrPlRrl(q)
+	print "\nConstraint Equation Results: \n",P
+
+	print "\nR_left: \n",R_left
+	print "\nR_right: \n",R_right
 
 	print "\nEuler angles left: \n", X_left,Y_left,Z_left
 	print "Euler angles right: \n", X_right,Y_right,Z_right
