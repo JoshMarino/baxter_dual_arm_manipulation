@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 #########################################################################################################
-#This demo script allows interaction with MoveIt! from a python script.									#
-#Three move_groups are created, one for "left_arm" and"right_arm", with another for "both_arms". 		#
-#They all take pose messages and MoveIt! will attempt to plan left arm and then right arm. 				#
+#This demo script allows interaction with MoveIt! from a python script.                                 #
+#Three move_groups are created, one for "left_arm" and"right_arm", with another for "both_arms".        #
+#They all take pose messages and MoveIt! will attempt to plan left arm and then right arm.              #
 #Another option is commented out for setting only a position target and not worrying about orientation. #
-#Also provided in this script is for planning both arms simultaneously, collision-free.					#
-#At the end, the path time for both arms is printed to the terminal.									#
+#Also provided in this script is for planning both arms simultaneously, collision-free.                 #
+#At the end, the path time for both arms is printed to the terminal.                                    #
 #########################################################################################################
 
 

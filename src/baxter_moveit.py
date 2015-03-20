@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 #########################################################################################################
-#This demo script allows interaction with MoveIt! from a python script.									#
-#Two move_groups are created, one for "left_arm" and another for "right_arm". 							#
+#This demo script allows interaction with MoveIt! from a python script.                                 #
+#Two move_groups are created, one for "left_arm" and another for "right_arm".                           #
 #They both take pose messages and MoveIt! will attempt to plan each arm separately, one after the other.#
 #########################################################################################################
 

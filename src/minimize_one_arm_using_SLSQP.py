@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 #########################################################################################################
-#This demo python script solves an IK problem for the right arm.										#
-#You have to provide the starting pose and goal pose.													#
-#The minimization problem is run, satisfying the constraints for the goal orientation.					#
-#Will also need to update the URDF file location.														#
+#This demo python script solves an IK problem for the right arm.                                        #
+#You have to provide the starting pose and goal pose.                                                   #
+#The minimization problem is run, satisfying the constraints for the goal orientation.                  #
+#Will also need to update the URDF file location.                                                       #
 #########################################################################################################
 
 
