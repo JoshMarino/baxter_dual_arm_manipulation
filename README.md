@@ -16,6 +16,7 @@ Josh Marino
 
 [Future Work](#Future Work)
 
+![successful_handoff](successful_iteration.png)
 
 
 #### Project Overview  <a name="Project Overview"></a>
