@@ -1,5 +1,16 @@
 #!/usr/bin/env python
 
+#########################################################################################################
+#This demo script allows interaction with MoveIt! from a python script.									#
+#Three move_groups are created, one for "left_arm" and"right_arm", with another for "both_arms". 		#
+#They all take pose messages and MoveIt! will attempt to plan left arm and then right arm. 				#
+#Another option is commented out for setting only a position target and not worrying about orientation. #
+#Also provided in this script is for planning both arms simultaneously, collision-free.					#
+#At the end, the path time for both arms is printed to the terminal.									#
+#########################################################################################################
+
+
+
 import sys
 import copy
 import rospy
@@ -48,25 +59,6 @@ if __name__ == '__main__':
 
 	#We create this DisplayTrajectory publisher which is used below to publish trajectories for RVIZ to visualize.
 	display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory)
-
-
-
-	#--Getting Basic Information--#
-
-	#We can get the name of the reference frame for this robot
-	#print "============ Reference frame: %s" % group_right_arm.get_planning_frame()
-
-	#We can also print the name of the end-effector link for this group
-	#print "============ End-effector link: %s" % group_left_arm.get_end_effector_link()
-	
-	#We can get a list of all the groups in the robot
-	#print "============ Robot Groups:"
-	#print robot.get_group_names()
-
-	#Sometimes for debugging it is useful to print the entire state of the robot.
-	#print "============ Printing robot state"
-	#print robot.get_current_state()
-	#print "============"
 
 
 
