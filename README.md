@@ -71,11 +71,8 @@ Also provided to the minimization function were rotational bounds for each joint
 
 Numerous attempts were made to determine the best constraints to ensure that the end-effector grippers would be 90 degrees away from one another. The best solution found was defining roll, pitch, yaw contraints from the rotation matrix that signified the rotation from the right end-effector to the left end-effector. This rotation matrix was calculated by
 
-```
+> R_rl =  transpose(R_br)*(R_bl)
 
-R_rl =  transpose(R_br)*(R_bl)
-
-```
 where b stands for base frame, and r, l are for right and left gripper frames, respectively.
 
 
