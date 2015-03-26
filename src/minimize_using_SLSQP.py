@@ -9,6 +9,7 @@ import copy
 import geometry_msgs.msg
 import moveit_commander
 import moveit_msgs.msg
+import random
 
 from scipy.optimize import minimize
 from math import sqrt
@@ -41,6 +42,7 @@ def InitializeMoveitCommander():
 	scene = moveit_commander.PlanningSceneInterface()
 
 	#Instantiate a MoveGroupCommander object. This object is an interface to one group of joints. In this case the group is the joints in the left arm. This interface can be used to plan and execute motions on the left arm.
+	global group_both_arms, group_left_arm, group_right_arm
 	group_both_arms = MoveGroupCommander("both_arms")
 	group_both_arms.set_goal_position_tolerance(0.01)
 	group_both_arms.set_goal_orientation_tolerance(0.01)
@@ -74,13 +76,11 @@ def InitializeMoveitCommander():
 # Takes configuration variables in joint space and returns the end-effector position and Euler XYZ angles
 def JS_to_P(q,arm):
 
-	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
+	if arm == 'right':
+		T = kdl_kin_right.forward(q)
+	elif arm == 'left':
+		T = kdl_kin_left.forward(q)
 
-	kdl_kin = KDLKinematics(robot, "base", str(arm)+"_gripper")
-
-	q_correct_order = np.array([q[0], q[1], q[2], q[3], q[4], q[5], q[6]])
-
-	T = kdl_kin.forward(q_correct_order)
 	R = T[:3,:3]
 
 	x = T[0,3]
@@ -98,12 +98,6 @@ def JS_to_P(q,arm):
 # Takes configuration variables in joint space and returns the end-effector position and Euler XYZ angles
 def JS_to_PrPlRrl(q):
 
-	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
-
-	kdl_kin_left = KDLKinematics(robot, "base", "left_gripper")
-	kdl_kin_right = KDLKinematics(robot, "base", "right_gripper")
-
-
 	T_left = kdl_kin_left.forward(q[0:7])
 	R_left = np.array(T_left[:3,:3])
 
@@ -120,14 +114,33 @@ def JS_to_PrPlRrl(q):
 	z_right = T_right[2,3]
 
 
+	T_rl = np.dot(InverseTransformationMatrix(T_right), T_left)
+	sep_dist_x = T_rl[0,3]
+	sep_dist_y = T_rl[1,3]
+	sep_dist_z = T_rl[2,3]
+
 	R_rl = np.dot(np.transpose(R_right), R_left)
 
 	roll,pitch,yaw = euler_from_matrix(R_rl, 'sxyz')
 
-	P = np.array([[x_left],[y_left],[z_left],[x_right],[y_right],[z_right],[roll],[pitch],[yaw],[R_right[0,0]],[R_left[0,1]],[R_right[1,0]],[R_left[1,1]]])
+	P = np.array([[x_left],[y_left],[z_left],[x_right],[y_right],[z_right],[roll],[pitch],[yaw],[sep_dist_x],[sep_dist_y],[sep_dist_z]])
 
 	return P
 
+
+
+# Calculates the inverse of a transformation maxtrix T
+def InverseTransformationMatrix(T):
+
+	T_inv = np.full( (4,4), 0)
+
+	T_inv[:3,:3] = np.transpose(T[:3,:3])
+
+	T_inv[:3,3:4] = -np.dot( np.transpose(T[:3,:3]), np.array([[T[0,3]], [T[1,3]], [T[2,3]]]) )
+
+	T_inv[3,3] = 1 
+
+	return T_inv
 
 
 
@@ -145,6 +158,24 @@ minimization = lambda q: (norm(JS_to_P(q[0:7],'left'), P_left_current) + norm(JS
 
 
 
+# Estimating jacobian (gradient) of minimization function
+def jacobian(q):
+
+	jac_left = kdl_kin_left.jacobian(q[0:7])
+	jacinv_left = np.linalg.pinv(jac_left)
+
+	jac_right = kdl_kin_right.jacobian(q[7:14])
+	jacinv_right = np.linalg.pinv(jac_right)
+
+	jacobian_left = np.array([ (jacinv_left[i,0] + jacinv_left[i,1] + jacinv_left[i,2] + jacinv_left[i,3] + jacinv_left[i,4] + jacinv_left[i,5]) for i in range(7) ])
+	jacobian_right = np.array([ (jacinv_right[i,0] + jacinv_right[i,1] + jacinv_right[i,2] + jacinv_right[i,3] + jacinv_right[i,4] + jacinv_right[i,5]) for i in range(7) ])
+
+	jacobian = np.array([jacobian_left[0],jacobian_left[1],jacobian_left[2],jacobian_left[3],jacobian_left[4],jacobian_left[5],jacobian_left[6],jacobian_right[0],jacobian_right[1],jacobian_right[2],jacobian_right[3],jacobian_right[4],jacobian_right[5],jacobian_right[6]])
+
+	return jacobian
+
+
+
 # Main portion of code
 def main():
 
@@ -155,58 +186,40 @@ def main():
 	InitializeMoveitCommander()
 
 
-	# Initial guess
-	x0 = np.full((14,1), 0.5)
+	# Initialization of KDL Kinematics for right and left grippers
+	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
+
+	global kdl_kin_left, kdl_kin_right
+	kdl_kin_left = KDLKinematics(robot, "base", "left_gripper")
+	kdl_kin_right = KDLKinematics(robot, "base", "right_gripper")
+
 
 	# Bounds for SLSQP: s0, s1, e0, e1, w0, w1, w2 (left,right)
 	bnds = ( (-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618), (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059),(-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618),  (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059)) # lower and upper bounds for each q (length 14)
 
+	# Initial guess
+	#x0 = np.full((14,1), 0.75)
+	x0 = np.array([[random.uniform(bnds[i][0]/2.,bnds[i][1]/2.)] for i in range(14)])
+
 	# Constraint equality
 	Handoff_separation = np.array([[0.0],[0.1],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
-	cons = ({'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[3,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[3,0]},
-			{'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[4,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[4,0]}, 
-			{'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[5,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[5,0]})
-	
-	cons2 = ({'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[3,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[3,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[4,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[4,0]}, 
-			 {'type': 'eq', 'fun': lambda q: JS_to_P(q[0:7],'left')[5,0]-JS_to_P(q[7:14],'right')[3,0]-Handoff_separation[5,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[6,0] - Handoff_separation[3,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[7,0] - Handoff_separation[4,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]})
-
-	cons3 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - JS_to_PrPlRrl(q)[3,0] - Handoff_separation[0,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - JS_to_PrPlRrl(q)[4,0] - Handoff_separation[1,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[2,0] - JS_to_PrPlRrl(q)[5,0] - Handoff_separation[2,0]})
-
-	cons4 = ({'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},
-			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0] - JS_to_PrPlRrl(q)[10,0]})
-
-	cons5 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - JS_to_PrPlRrl(q)[3,0] - Handoff_separation[0,0]}, 	#x-distance = 0.1*sin(acos(R_right[0,0])) //JS_to_PrPlRrl(q)[9,0]
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - JS_to_PrPlRrl(q)[4,0] - Handoff_separation[1,0]}, 	#y-distance = 0.1*cos(acos(R_right[0,0]))
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[2,0] - JS_to_PrPlRrl(q)[5,0] - Handoff_separation[2,0]}, 	#z-distance = 0
-			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},			   	#roll
-			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},				#pitch
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},							#yaw
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0] - JS_to_PrPlRrl(q)[10,0]},							#EE's pointed towards each other instead of away
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0] - JS_to_PrPlRrl(q)[12,0]})							#EE's pointed towards each other instead of away
-
+	cons6 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 				#x-distance = 0
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 				#y-distance = 0
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 				#z-distance = 0.1
+			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},   	#roll = pi
+			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},		#pitch = 0
+			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]})					#yaw = -pi/2
+			 #{'type': 'ineq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - 0.4})									#x-pos > 0.3 m to help avoid collisions
 
 
 	# Minimization
-	result = minimize(minimization, x0, method='SLSQP', bounds=bnds, constraints=cons5, tol=None, options={'maxiter': 10000})
+	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons6, tol=0.1, options={'maxiter': 300})
 
 
 
 	print "\nNumber of iterations: \n", result.success, result.nit
 	print result
 
-
-	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
-
-	kdl_kin_left = KDLKinematics(robot, "base", "left_gripper")
-	kdl_kin_right = KDLKinematics(robot, "base", "right_gripper")
 
 	q_left = result.x[0:7]
 	q_right = result.x[7:14]
@@ -225,22 +238,19 @@ def main():
 	X_left,Y_left,Z_left = euler_from_matrix(R_left, 'sxyz')
 	X_right,Y_right,Z_right = euler_from_matrix(R_right, 'sxyz')
 
-	q = np.array([q_left[0],q_left[1],q_left[2],q_left[3],q_left[4],q_left[5],q_left	[6],q_right[0],q_right[1],q_right[2],q_right[3],q_right[4],q_right[5],q_right[6]])
+	q = np.array([q_left[0],q_left[1],q_left[2],q_left[3],q_left[4],q_left[5],q_left[6],q_right[0],q_right[1],q_right[2],q_right[3],q_right[4],q_right[5],q_right[6]])
 	P = JS_to_PrPlRrl(q)
-	print "\nConstraint Equation Results: \n",P
 
-	print "\nR_left: \n",R_left
-	print "\nR_right: \n",R_right
-
-	print "\nEuler angles left: \n", X_left,Y_left,Z_left
-	print "Euler angles right: \n", X_right,Y_right,Z_right
+	print "\nDistance between handoff", math.sqrt( (pose_left[0,3] - pose_right[0,3])**2 + (pose_left[1,3] - pose_right[1,3])**2 + (pose_left[2,3] - pose_right[2,3])**2 )
 
 
 	#s0, s1, e0, e1, w0, w1, w2 
-	#joints = {'left_s0': result[0], 'left_s1': result[1], 'left_e0': result[2], 'left_e1': result[3], 'left_w0': result[4], 'left_w1': result[5], 'left_w2': result[6], 'right_s0': result[7], 'right_s1': result[8], 'right_e0': result[9], 'right_e1': result[10], 'right_w0': result[11], 'right_w1': result[12], 'right_w2': result[13]}
+	joints = {'left_s0': q_left[0], 'left_s1': q_left[1], 'left_e0': q_left[2], 'left_e1': q_left[3], 'left_w0': q_left[4], 'left_w1': q_left[5], 'left_w2': q_left[6], 'right_s0': q_right[0], 'right_s1': q_right[1], 'right_e0': q_right[2], 'right_e1': q_right[3], 'right_w0': q_right[4], 'right_w1': q_right[5], 'right_w2': q_right[6]}
 
-	#group_both_arms.set_joint_value_target(joints)
-	#plan_both = group_both_arms.plan()
+	group_both_arms.set_joint_value_target(joints)
+	plan_both = group_both_arms.plan()
+
+	print "Trajectory time (nsec): ", plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
 
 
 
