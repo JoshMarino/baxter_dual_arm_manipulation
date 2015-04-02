@@ -199,22 +199,59 @@ def main():
 
 	# Initial guess
 	#x0 = np.full((14,1), 0.75)
-	x0 = np.array([[random.uniform(bnds[i][0]/2.,bnds[i][1]/2.)] for i in range(14)])
+	#x0 = np.array([[random.uniform(bnds[i][0]/2.,bnds[i][1]/2.)] for i in range(14)])
+	initial_left = Pose()
+	initial_left.position=Point(
+		            x= 0.3,#(P_left_current[0,0] + P_right_current[0,0])/2.,
+		            y= (P_left_current[1,0] + P_right_current[1,0])/2.,
+		            z= (P_left_current[2,0] + P_right_current[2,0])/2.,
+		        )
+	initial_left.orientation=Quaternion(
+		            x=0.0,
+		            y=0.0,
+		            z=0.0,
+		            w=1.0,
+		        )
+
+	initial_right = Pose()
+	initial_right.position=Point(
+		            x= 0.3,#(P_left_current[0,0] + P_right_current[0,0])/2.,
+		            y= (P_left_current[1,0] + P_right_current[1,0])/2.,
+		            z= (P_left_current[2,0] + P_right_current[2,0])/2.,
+		        )
+	initial_right.orientation=Quaternion(
+		            x=0.0,
+		            y=0.0,
+		            z=0.0,
+		            w=1.0,
+		        )
+
+	x0_left = kdl_kin_left.inverse(initial_left)
+	x0_right = kdl_kin_left.inverse(initial_right)
+
+	x0 = np.array([[x0_left[0]],[x0_left[1]],[x0_left[2]],[x0_left[3]],[x0_left[4]],[x0_left[5]],[x0_left[6]],[x0_right[0]],[x0_right[1]],[x0_right[2]],[x0_right[3]],[x0_right[4]],[x0_right[5]],[x0_right[6]]])
+
+	x0 = x0 + random.uniform(-0.075,0.075)
+
 
 	# Constraint equality
 	Handoff_separation = np.array([[0.0],[0.1],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
-	cons6 = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 				#x-distance = 0
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 				#y-distance = 0
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 				#z-distance = 0.1
-			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},   	#roll = pi
-			 {'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},		#pitch = 0
-			 {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]})					#yaw = -pi/2
-			 #{'type': 'ineq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - 0.4})									#x-pos > 0.3 m to help avoid collisions
+	cons = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 				#x-sep-distance = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 			#y-sep-distance = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 			#z-sep-distance = 0.1
+			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},   	#roll = pi
+			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},	#pitch = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},				#yaw = -pi/2
+			#{'type': 'ineq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0]-0.3},									#x-pos > 0.3 m to help avoid collisions
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - (P_left_current[0,0] + P_right_current[0,0])/2.},
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - (P_left_current[1,0] + P_right_current[1,0])/2.})
+			#{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - (P_left_current[0,0] + P_right_current[0,0])/2.})
 
 
 	# Minimization
-	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons6, tol=0.1, options={'maxiter': 300})
-
+	before = rospy.get_rostime()
+	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 30})
+	after = rospy.get_rostime()
 
 
 	print "\nNumber of iterations: \n", result.success, result.nit
@@ -227,30 +264,36 @@ def main():
 	pose_left = kdl_kin_left.forward(q_left)
 	pose_right = kdl_kin_right.forward(q_right)
 
-	print "\nQ left: \n",q_left
-	print "Q right: \n",q_right
 	print "\nPose left: \n",pose_left
 	print "Pose right: \n",pose_right
 
-	R_left = pose_left[:3,:3]
-	R_right = pose_right[:3,:3]
+	#R_left = pose_left[:3,:3]
+	#R_right = pose_right[:3,:3]
 
-	X_left,Y_left,Z_left = euler_from_matrix(R_left, 'sxyz')
-	X_right,Y_right,Z_right = euler_from_matrix(R_right, 'sxyz')
+	#X_left,Y_left,Z_left = euler_from_matrix(R_left, 'sxyz')
+	#X_right,Y_right,Z_right = euler_from_matrix(R_right, 'sxyz')
 
 	q = np.array([q_left[0],q_left[1],q_left[2],q_left[3],q_left[4],q_left[5],q_left[6],q_right[0],q_right[1],q_right[2],q_right[3],q_right[4],q_right[5],q_right[6]])
-	P = JS_to_PrPlRrl(q)
+	#P = JS_to_PrPlRrl(q)
 
-	print "\nDistance between handoff", math.sqrt( (pose_left[0,3] - pose_right[0,3])**2 + (pose_left[1,3] - pose_right[1,3])**2 + (pose_left[2,3] - pose_right[2,3])**2 )
+	print "\nDistance between handoff: ", math.sqrt( (pose_left[0,3] - pose_right[0,3])**2 + (pose_left[1,3] - pose_right[1,3])**2 + (pose_left[2,3] - pose_right[2,3])**2 )
+	print "Minimization time: ",(after.secs-before.secs)+(after.nsecs-before.nsecs)/1e+9
 
+	if result.success == False:
+		print "Minimization was a failure."
+	elif result.success == True:
+		print "Minimization was a success."
+		print "Planning a trajectory in MoveIt!"
 
-	#s0, s1, e0, e1, w0, w1, w2 
-	joints = {'left_s0': q_left[0], 'left_s1': q_left[1], 'left_e0': q_left[2], 'left_e1': q_left[3], 'left_w0': q_left[4], 'left_w1': q_left[5], 'left_w2': q_left[6], 'right_s0': q_right[0], 'right_s1': q_right[1], 'right_e0': q_right[2], 'right_e1': q_right[3], 'right_w0': q_right[4], 'right_w1': q_right[5], 'right_w2': q_right[6]}
+		#s0, s1, e0, e1, w0, w1, w2 
+		joints = {'left_s0': q_left[0], 'left_s1': q_left[1], 'left_e0': q_left[2], 'left_e1': q_left[3], 'left_w0': q_left[4], 'left_w1': q_left[5], 'left_w2': q_left[6], 'right_s0': q_right[0], 'right_s1': q_right[1], 'right_e0': q_right[2], 'right_e1': q_right[3], 'right_w0': q_right[4], 'right_w1': q_right[5], 'right_w2': q_right[6]}
 
-	group_both_arms.set_joint_value_target(joints)
-	plan_both = group_both_arms.plan()
+		group_both_arms.set_joint_value_target(joints)
+		plan_both = group_both_arms.plan()
 
-	print "Trajectory time (nsec): ", plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
+		print "Trajectory time (nsec): ", plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
+
+		#print "\nMoveit plan:",len(plan_both.joint_trajectory.joint_names)
 
 
 
