@@ -21,6 +21,7 @@ from geometry_msgs.msg import (PoseStamped, Pose, Point, Quaternion)
 from moveit_commander import MoveGroupCommander
 
 
+first_flag = False
 
 
 # Initialize moveit commander and move group commander
@@ -249,6 +250,26 @@ def JointAnglesHandOffPose():
 
 
 
+# Listens for a button press to tell main to run the minimization process
+def checkButtonPress(msg):
+
+    pose = msg.pose
+
+    position_new = pose.position
+    orientation_new = pose.orientation
+
+    global first_flag
+
+    pose_stocking[0,0] = position_new.x
+    pose_stocking[1,0] = position_new.y
+    pose_stocking[2,0] = position_new.z
+
+    first_flag = True
+
+    return
+
+
+
 # Main portion of code
 def main():
 
@@ -257,6 +278,9 @@ def main():
 
 	# Start Moveit Commander
 	InitializeMoveitCommander()
+
+	# Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
+    rospy.Subscriber("/pose/stocking",PoseStamped,checkButtonPress)
 
 
 	# Initialization of KDL Kinematics for right and left grippers
@@ -267,58 +291,65 @@ def main():
 	kdl_kin_right = KDLKinematics(robot, "base", "right_gripper")
 
 
-	# Minimize hand-off pose - minimization performed 5 times - MoveIt! planned 10 times each - to obtain different results
-	Trajectories = [[None]*3]*50 # [joint_angles,trajectory_plan,trajectory_time]
+	# Continuously be listening for the flag to indicate to run the minimization process once
+    while not rospy.is_shutdown():
 
-	time_before = rospy.get_rostime()
+		if first_flag == True:
 
-	# Minimization performed 5 times
-	for i in range (5):
+			# Minimize hand-off pose - minimization performed 5 times - MoveIt! planned 10 times each - to obtain different results
+			Trajectories = [[None]*3]*50 # [joint_angles,trajectory_plan,trajectory_time]
 
-		# Determine joint angles for minimization
-		q = JointAnglesHandOffPose()
+			time_before = rospy.get_rostime()
+
+			# Minimization performed 5 times
+			for i in range (5):
+
+				# Determine joint angles for minimization
+				q = JointAnglesHandOffPose()
 
 
-		# MoveIt! planned 10 times for each minimization result
-		for j in range (10):
+				# MoveIt! planned 10 times for each minimization result
+				for j in range (10):
 
-			# Checking to see if minimization problem was solved with a fixed max number of iterations
-			if q[0] != 99:
-				joints = {'left_s0': q[0], 'left_s1': q[1], 'left_e0': q[2], 'left_e1': q[3], 'left_w0': q[4], 'left_w1': q[5], 'left_w2': q[6], 'right_s0': q[7], 'right_s1': q[8], 'right_e0': q[9], 'right_e1': q[10], 'right_w0': q[11], 'right_w1': q[12], 'right_w2': q[13]}
+					# Checking to see if minimization problem was solved with a fixed max number of iterations
+					if q[0] != 99:
+						joints = {'left_s0': q[0], 'left_s1': q[1], 'left_e0': q[2], 'left_e1': q[3], 'left_w0': q[4], 'left_w1': q[5], 'left_w2': q[6], 'right_s0': q[7], 'right_s1': q[8], 'right_e0': q[9], 'right_e1': q[10], 'right_w0': q[11], 'right_w1': q[12], 'right_w2': q[13]}
 
-				# Planning in MoveIt!
-				group_both_arms.set_joint_value_target(joints)
-				plan_both = group_both_arms.plan()
+						# Planning in MoveIt!
+						group_both_arms.set_joint_value_target(joints)
+						plan_both = group_both_arms.plan()
 
-				# Checking to see if MoveIt! was able to plan a collision-free path
-				if len(plan_both.joint_trajectory.joint_names) != 0:
-					temp1 = plan_both
-					temp2 = plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
-				else:
-					temp1 = 0
-					temp2 = rospy.Time(10)
-			else:
-				temp1 = 0
-				temp2 = rospy.Time(10)
+						# Checking to see if MoveIt! was able to plan a collision-free path
+						if len(plan_both.joint_trajectory.joint_names) != 0:
+							temp1 = plan_both
+							temp2 = plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
+						else:
+							temp1 = 0
+							temp2 = rospy.Time(10)
+					else:
+						temp1 = 0
+						temp2 = rospy.Time(10)
 
-			# Storing joint angles, trajectory plan, and trajectory time for comparison later
-			Trajectories[10*i+j] = [q,temp1,temp2]
+					# Storing joint angles, trajectory plan, and trajectory time for comparison later
+					Trajectories[10*i+j] = [q,temp1,temp2]
 
-	time_after = rospy.get_rostime()
-	print "\nMinimization and MoveIt! planning time: ", (time_after.secs-time_before.secs)+(time_after.nsecs-time_before.nsecs)/1e+9
+			time_after = rospy.get_rostime()
+			print "\nMinimization and MoveIt! planning time: ", (time_after.secs-time_before.secs)+(time_after.nsecs-time_before.nsecs)/1e+9
 
-	# Find trajectory that took the least amount of time and execute it
-	traj_time = np.full(50,None)
-	for i in range(50):
-		temp3 = Trajectories[i][2]
-		traj_time[i] = temp3.secs + temp3.nsecs/1e9
+			# Find trajectory that took the least amount of time and execute it
+			traj_time = np.full(50,None)
+			for i in range(50):
+				temp3 = Trajectories[i][2]
+				traj_time[i] = temp3.secs + temp3.nsecs/1e9
 
-	minimum_time_entry =  np.nanargmin(traj_time)
+			minimum_time_entry =  np.nanargmin(traj_time)
 
-	print "Least trajectory time: ", Trajectories[minimum_time_entry][2].secs + Trajectories[minimum_time_entry][2].nsecs/1e+9
+			print "Least trajectory time: ", Trajectories[minimum_time_entry][2].secs + Trajectories[minimum_time_entry][2].nsecs/1e+9
 
-	print "Executing least trajectory time."
-	group_both_arms.execute(Trajectories[minimum_time_entry][1])
+			print "Executing least trajectory time."
+			group_both_arms.execute(Trajectories[minimum_time_entry][1])
+
+			first_flag = False
 
 
 
