@@ -231,7 +231,7 @@ def main():
 
 	x0 = np.array([[x0_left[0]],[x0_left[1]],[x0_left[2]],[x0_left[3]],[x0_left[4]],[x0_left[5]],[x0_left[6]],[x0_right[0]],[x0_right[1]],[x0_right[2]],[x0_right[3]],[x0_right[4]],[x0_right[5]],[x0_right[6]]])
 
-	x0 = x0 + random.uniform(-0.075,0.075)
+	x0 = x0 + random.uniform(-0.2,0.2)
 
 
 	# Constraint equality
@@ -250,7 +250,7 @@ def main():
 
 	# Minimization
 	before = rospy.get_rostime()
-	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 30})
+	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 100})
 	after = rospy.get_rostime()
 
 
@@ -276,10 +276,11 @@ def main():
 	q = np.array([q_left[0],q_left[1],q_left[2],q_left[3],q_left[4],q_left[5],q_left[6],q_right[0],q_right[1],q_right[2],q_right[3],q_right[4],q_right[5],q_right[6]])
 	#P = JS_to_PrPlRrl(q)
 
-	print "\nDistance between handoff: ", math.sqrt( (pose_left[0,3] - pose_right[0,3])**2 + (pose_left[1,3] - pose_right[1,3])**2 + (pose_left[2,3] - pose_right[2,3])**2 )
+	handoff_distance = math.sqrt( (pose_left[0,3] - pose_right[0,3])**2 + (pose_left[1,3] - pose_right[1,3])**2 + (pose_left[2,3] - pose_right[2,3])**2 )
+	print "\nDistance between handoff: ", handoff_distance
 	print "Minimization time: ",(after.secs-before.secs)+(after.nsecs-before.nsecs)/1e+9
 
-	if result.success == False:
+	if result.success == False or math.fabs(handoff_distance - 0.1) > 0.05:
 		print "Minimization was a failure."
 	elif result.success == True:
 		print "Minimization was a success."
