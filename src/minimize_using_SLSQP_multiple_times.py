@@ -10,6 +10,7 @@ import geometry_msgs.msg
 import moveit_commander
 import moveit_msgs.msg
 import random
+import baxter_interface
 
 from scipy.optimize import minimize
 from math import sqrt
@@ -19,6 +20,8 @@ from tf.transformations import euler_from_matrix
 from std_msgs.msg import (Header, String)
 from geometry_msgs.msg import (PoseStamped, Pose, Point, Quaternion)
 from moveit_commander import MoveGroupCommander
+from baxter_core_msgs.msg import DigitalIOState
+from baxter_interface import CHECK_VERSION
 
 
 first_flag = False
@@ -28,19 +31,21 @@ first_flag = False
 def InitializeMoveitCommander():
 
 	#First initialize moveit_commander 
-	print "============ Starting tutorial setup"
+	#print "============ Starting tutorial setup"
 	moveit_commander.roscpp_initialize(sys.argv)
 
 	#Instantiate a RobotCommander object. This object is an interface to the robot as a whole.
 	robot = moveit_commander.RobotCommander()
 
 	#Wait for RVIZ to initialize. This sleep is ONLY to allow Rviz to come up.
-	print "============ Waiting for RVIZ..."
+	#print "============ Waiting for RVIZ..."
 	rospy.sleep(1)
-	print "============ Starting tutorial "
+	#print "============ Starting tutorial "
 
 	#Instantiate a PlanningSceneInterface object. This object is an interface to the world surrounding the robot.
+	global scene
 	scene = moveit_commander.PlanningSceneInterface()
+	rospy.sleep(1)
 
 	#Instantiate a MoveGroupCommander object. This object is an interface to one group of joints. In this case the group is the joints in the left arm. This interface can be used to plan and execute motions on the left arm.
 	global group_both_arms, group_left_arm, group_right_arm
@@ -69,7 +74,26 @@ def InitializeMoveitCommander():
 	global P_left_current, P_right_current
 	P_left_current = np.array([[P_left_pose.pose.position.x],[P_left_pose.pose.position.y],[P_left_pose.pose.position.z],[P_left_euler[0]],[P_left_euler[1]],[P_left_euler[2]]])
 	P_right_current = np.array([[P_right_pose.pose.position.x],[P_right_pose.pose.position.y],[P_right_pose.pose.position.z],[P_right_euler[0]],[P_right_euler[1]],[P_right_euler[1]]])
-	print "\nCurrent pose of left and right EE: \n", np.transpose(P_left_current), "\n", np.transpose(P_right_current)
+
+
+	# Add collision object for the cube initially in the left gripper
+	pose_left = PoseStamped()
+
+	pose_left.header.frame_id = "left_gripper"
+	pose_left.pose.position = Point(*[0,0,0.07])
+	pose_left.pose.orientation = Quaternion(*[0,0,0,1])
+
+
+	scene.remove_attached_object("left_gripper")
+	rospy.sleep(1)
+	scene.remove_world_object("cube")
+	rospy.sleep(1)
+	scene.attach_box("left_gripper", "cube", pose_left, (0.06,0.06,0.06))
+	rospy.sleep(1)
+
+
+	group_both_arms.attach_object("cube", "left_gripper")
+	rospy.sleep(1)
 
 
 
@@ -180,63 +204,32 @@ def jacobian(q):
 # Returns set of joint angles from SLSQP minimization
 def JointAnglesHandOffPose():
 
-	# Initial guess
-	initial_left = Pose()
-	initial_left.position=Point(
-		            x= 0.3,#(P_left_current[0,0] + P_right_current[0,0])/2.,
-		            y= (P_left_current[1,0] + P_right_current[1,0])/2.,
-		            z= (P_left_current[2,0] + P_right_current[2,0])/2.,
-		        )
-	initial_left.orientation=Quaternion(
-		            x=0.0,
-		            y=0.0,
-		            z=0.0,
-		            w=1.0,
-		        )
-
-	initial_right = Pose()
-	initial_right.position=Point(
-		            x= 0.3,#(P_left_current[0,0] + P_right_current[0,0])/2.,
-		            y= (P_left_current[1,0] + P_right_current[1,0])/2.,
-		            z= (P_left_current[2,0] + P_right_current[2,0])/2.,
-		        )
-	initial_right.orientation=Quaternion(
-		            x=0.0,
-		            y=0.0,
-		            z=0.0,
-		            w=1.0,
-		        )
-
-	x0_left = kdl_kin_left.inverse(initial_left)
-	x0_right = kdl_kin_left.inverse(initial_right)
-
-	x0 = np.array([[x0_left[0]],[x0_left[1]],[x0_left[2]],[x0_left[3]],[x0_left[4]],[x0_left[5]],[x0_left[6]],[x0_right[0]],[x0_right[1]],[x0_right[2]],[x0_right[3]],[x0_right[4]],[x0_right[5]],[x0_right[6]]])
-
-	x0 = x0 + random.uniform(-0.075,0.075)
-
 
 	# Bounds for SLSQP: s0, s1, e0, e1, w0, w1, w2 (left,right)
 	bnds = ( (-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618), (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059),(-1.70167993878, 1.70167993878), (-2.147, 1.047), (-3.05417993878, 3.05417993878), (-0.05, 2.618),  (-3.059, 3.059), (-1.57079632679, 2.094), (-3.059, 3.059)) # lower and upper bounds for each q (length 14)
 
+
+	# Initial guess
+	x0 = np.array([[random.uniform(bnds[i][0]/2.,bnds[i][1]/2.)] for i in range(14)])
+
 	# Constraint equality
-	Handoff_separation = np.array([[0.0],[0.1],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
-	cons = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 				#x-sep-distance = 0
-			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 			#y-sep-distance = 0
-			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 			#z-sep-distance = 0.1
-			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},   	#roll = pi
-			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},	#pitch = 0
-			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},				#yaw = -pi/2
-			#{'type': 'ineq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0]-0.3},									#x-pos > 0.3 m to help avoid collisions
-			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - (P_left_current[0,0] + P_right_current[0,0])/2.},
-			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - (P_left_current[1,0] + P_right_current[1,0])/2.})
-			#{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - (P_left_current[0,0] + P_right_current[0,0])/2.})
+	Handoff_separation = np.array([[0.0],[0.12],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
+	cons = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 							#x-sep-distance = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 						#y-sep-distance = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 						#z-sep-distance = 0.12
+			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[6,0]) - Handoff_separation[3,0]},   				#roll = pi
+			{'type': 'eq', 'fun': lambda q: math.fabs(JS_to_PrPlRrl(q)[7,0]) - Handoff_separation[4,0]},				#pitch = 0
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[8,0] - Handoff_separation[5,0]},							#yaw = -pi/2
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[0,0] - (P_left_current[0,0] + P_right_current[0,0])/2.},	#x_pos_right = midpoint of initial poses
+			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[1,0] - (P_left_current[1,0] + P_right_current[1,0])/2.})	#y_pos_right = midpoint of initial poses
+
 
 
 	# Minimization
 	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 30})
 
 	print "\nNumber of iterations: \n", result.success, result.nit
-	print result
+	#print result
 
 	if result.success == False:
 		q = np.array([99,99,99,99,99,99,99,99,99,99,99,99,99,99])
@@ -253,20 +246,14 @@ def JointAnglesHandOffPose():
 # Listens for a button press to tell main to run the minimization process
 def checkButtonPress(msg):
 
-    pose = msg.pose
+	state = msg.state
 
-    position_new = pose.position
-    orientation_new = pose.orientation
+	if state == True:
 
-    global first_flag
+		global first_flag
+		first_flag = True
 
-    pose_stocking[0,0] = position_new.x
-    pose_stocking[1,0] = position_new.y
-    pose_stocking[2,0] = position_new.z
-
-    first_flag = True
-
-    return
+	return
 
 
 
@@ -279,9 +266,24 @@ def main():
 	# Start Moveit Commander
 	InitializeMoveitCommander()
 
-	# Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
-    rospy.Subscriber("/pose/stocking",PoseStamped,checkButtonPress)
+	# Enable baxter
+	rs = baxter_interface.RobotEnable(CHECK_VERSION)
+	init_state = rs.state().enabled
+	rs.enable()
 
+	#Calibrate and open left gripper
+	left_gripper = baxter_interface.Gripper('left')
+	left_gripper.calibrate()
+	left_gripper.open()
+	gripper_identifier = "left"
+
+	#Calibrate and open right gripper
+	right_gripper = baxter_interface.Gripper('right')
+	right_gripper.calibrate()
+	right_gripper.open()
+
+	# Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
+	rospy.Subscriber("/robot/digital_io/left_itb_button1/state",DigitalIOState,checkButtonPress)
 
 	# Initialization of KDL Kinematics for right and left grippers
 	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
@@ -292,9 +294,12 @@ def main():
 
 
 	# Continuously be listening for the flag to indicate to run the minimization process once
-    while not rospy.is_shutdown():
+	while not rospy.is_shutdown():
 
 		if first_flag == True:
+
+			print "Entered minimization process."
+			print "Computing handoff poses..."
 
 			# Minimize hand-off pose - minimization performed 5 times - MoveIt! planned 10 times each - to obtain different results
 			Trajectories = [[None]*3]*50 # [joint_angles,trajectory_plan,trajectory_time]
@@ -306,7 +311,6 @@ def main():
 
 				# Determine joint angles for minimization
 				q = JointAnglesHandOffPose()
-
 
 				# MoveIt! planned 10 times for each minimization result
 				for j in range (10):
@@ -349,6 +353,75 @@ def main():
 			print "Executing least trajectory time."
 			group_both_arms.execute(Trajectories[minimum_time_entry][1])
 
+
+			# Create poses for cube to be seen in RViz using MoveIt!
+			pose_left = PoseStamped()
+			pose_right = PoseStamped()
+
+			pose_left.header.frame_id = "left_gripper"
+			pose_left.pose.position = Point(*[0,0,0.07])
+			pose_left.pose.orientation = Quaternion(*[0,0,0,1])
+
+			pose_right.header.frame_id = "right_gripper"
+			pose_right.pose.position = Point(*[0,0,0.07])
+			pose_right.pose.orientation = Quaternion(*[0,0,0,1])
+
+
+			# Swap cube from left to right grippers
+			if gripper_identifier == "left":
+				# Close right gripper, open left
+				right_gripper.close()
+				rospy.sleep(1)
+				left_gripper.open()
+
+				# Remove collision object from left gripper and place on right gripper
+				group_both_arms.detach_object("left_gripper")
+				rospy.sleep(1)
+				group_both_arms.attach_object("cube", "right_gripper")
+				rospy.sleep(1)
+
+				# Move cube to right gripper for visualization purposes
+				scene.remove_attached_object("left_gripper")
+				rospy.sleep(1)
+				scene.remove_world_object("cube")
+				rospy.sleep(1)
+				scene.attach_box("right_gripper", "cube", pose_right, (0.06,0.06,0.06))
+				rospy.sleep(1)
+
+				# Change identifier to be in right gripper now
+				gripper_identifier = "right"
+
+				print "Press button to do again."
+
+			# Swap cube from right to left gripper
+			elif gripper_identifier == "right":
+				# Close left gripper, open right
+				left_gripper.close()
+				rospy.sleep(1)
+				right_gripper.open()
+
+				# Remove collision object from right gripper and place on left gripper
+				group_both_arms.detach_object("right_gripper")
+				rospy.sleep(1)
+				group_both_arms.attach_object("cube", "left_gripper")
+				rospy.sleep(1)
+
+				# Move cube to left gripper for visualization purposes
+				scene.remove_attached_object("right_gripper")
+				rospy.sleep(1)
+				scene.remove_world_object("cube")
+				rospy.sleep(1)
+				scene.attach_box("left_gripper", "cube", pose_left, (0.06,0.06,0.06))
+				rospy.sleep(1)
+
+				# Change identifier to be in left gripper now
+				gripper_identifier = "left"
+
+				print "Press button to do again."
+
+
+			# Specify that minimization process has completed
+			global first_flag
 			first_flag = False
 
 
