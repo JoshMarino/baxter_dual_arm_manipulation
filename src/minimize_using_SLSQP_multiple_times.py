@@ -11,6 +11,10 @@ import moveit_commander
 import moveit_msgs.msg
 import random
 import baxter_interface
+import cv2
+import cv_bridge
+import rospkg
+import os
 
 from scipy.optimize import minimize
 from math import sqrt
@@ -20,11 +24,15 @@ from tf.transformations import euler_from_matrix
 from std_msgs.msg import (Header, String)
 from geometry_msgs.msg import (PoseStamped, Pose, Point, Quaternion)
 from moveit_commander import MoveGroupCommander
-from baxter_core_msgs.msg import DigitalIOState
+from baxter_core_msgs.msg import (DigitalIOState, EndEffectorState)
 from baxter_interface import CHECK_VERSION
+from sensor_msgs.msg import Image
 
 
+global first_flag, force_left_gripper, force_right_gripper
 first_flag = False
+force_left_gripper = False
+force_right_gripper = False
 
 
 # Initialize moveit commander and move group commander
@@ -52,14 +60,17 @@ def InitializeMoveitCommander():
 	group_both_arms = MoveGroupCommander("both_arms")
 	group_both_arms.set_goal_position_tolerance(0.01)
 	group_both_arms.set_goal_orientation_tolerance(0.01)
+	group_both_arms.set_planning_time(5.0)
 
 	group_left_arm = MoveGroupCommander("left_arm")
 	group_left_arm.set_goal_position_tolerance(0.01)
 	group_left_arm.set_goal_orientation_tolerance(0.01)
+	group_left_arm.set_planning_time(5.0)
 
 	group_right_arm = MoveGroupCommander("right_arm")
 	group_right_arm.set_goal_position_tolerance(0.01)
 	group_right_arm.set_goal_orientation_tolerance(0.01)
+	group_right_arm.set_planning_time(5.0)
 
 	#We create this DisplayTrajectory publisher which is used below to publish trajectories for RVIZ to visualize.
 	display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory)
@@ -89,11 +100,11 @@ def InitializeMoveitCommander():
 	scene.remove_world_object("cube")
 	rospy.sleep(1)
 	scene.attach_box("left_gripper", "cube", pose_left, (0.06,0.06,0.06))
-	rospy.sleep(1)
+	rospy.sleep(3)
 
 
 	group_both_arms.attach_object("cube", "left_gripper")
-	rospy.sleep(1)
+	rospy.sleep(3)
 
 
 
@@ -226,7 +237,7 @@ def JointAnglesHandOffPose():
 
 
 	# Minimization
-	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 30})
+	result = minimize(minimization, x0, method='SLSQP', jac=jacobian, bounds=bnds, constraints=cons, tol=0.1, options={'maxiter': 40})
 
 	print "\nNumber of iterations: \n", result.success, result.nit
 	#print result
@@ -257,11 +268,54 @@ def checkButtonPress(msg):
 
 
 
+# Reads force sensor for left gripper to determine if holding block
+def checkForceLeftGripper(msg):
+
+	left_force = msg.force
+
+	global force_left_gripper
+
+	if left_force > 0.0:
+		force_left_gripper = True
+	else:
+		force_left_gripper = False
+
+	return
+
+
+# Reads force sensor for left gripper to determine if holding block
+def checkForceRightGripper(msg):
+
+	right_force = msg.force
+
+	global force_right_gripper
+
+	if right_force > 0.0:
+		force_right_gripper = True
+	else:
+		force_right_gripper = False
+
+	return
+
+
+
+# Send the image located at the specified path to the head display on Baxter.
+def send_image(path):
+
+    img = cv2.imread(path)
+    msg = cv_bridge.CvBridge().cv2_to_imgmsg(img, encoding="bgr8")
+    pub = rospy.Publisher('/robot/xdisplay', Image, latch=True, queue_size=1)
+    pub.publish(msg)
+    # Sleep to allow for image to be published.
+    rospy.sleep(1)
+
+
+
 # Main portion of code
 def main():
 
 	# Initialize node
-	rospy.init_node('minimization')
+	rospy.init_node('minimization_process')
 
 	# Start Moveit Commander
 	InitializeMoveitCommander()
@@ -285,21 +339,49 @@ def main():
 	# Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
 	rospy.Subscriber("/robot/digital_io/left_itb_button1/state",DigitalIOState,checkButtonPress)
 
+	# Create a subscriber to determine if block was successfully transfered from one hand to the other
+	rospy.Subscriber("/robot/end_effector/left_gripper/state",EndEffectorState,checkForceLeftGripper)
+	rospy.Subscriber("/robot/end_effector/right_gripper/state",EndEffectorState,checkForceRightGripper)
+
 	# Initialization of KDL Kinematics for right and left grippers
-	robot = URDF.from_xml_file("/home/josh/catkin_ws/src/baxter_common/baxter_description/urdf/baxter.urdf")
+	rospack = rospkg.RosPack()
+	pkgpath = rospack.get_path('baxter_dual_arm_manipulation')
+	SUBDIR_URDF = "baxter.urdf"
+	DIR_URDF = os.path.join(pkgpath, SUBDIR_URDF)
+
+	robot = URDF.from_xml_file(DIR_URDF)
 
 	global kdl_kin_left, kdl_kin_right
 	kdl_kin_left = KDLKinematics(robot, "base", "left_gripper")
 	kdl_kin_right = KDLKinematics(robot, "base", "right_gripper")
 
+	# Locations of images to be sent to head display
+	SUBDIR_IM1 = "move_arms1.png"
+	SUBDIR_IM2 = "computing_handoff_pose1.png"
+	SUBDIR_IM3 = "moving_arms1.png"
+	SUBDIR_IM4 = "no_trajectory_found.png"
+	DIR_IM1 = os.path.join(pkgpath, SUBDIR_IM1)
+	DIR_IM2 = os.path.join(pkgpath, SUBDIR_IM2)
+	DIR_IM3 = os.path.join(pkgpath, SUBDIR_IM3)
+	DIR_IM4 = os.path.join(pkgpath, SUBDIR_IM4)
+
+	first_image = DIR_IM1
+	second_image = DIR_IM2
+	third_image = DIR_IM3
+	fourth_image = DIR_IM4
+
 
 	# Continuously be listening for the flag to indicate to run the minimization process once
 	while not rospy.is_shutdown():
+
+		# Image telling to press the button to start minimization process
+		send_image(first_image)
 
 		if first_flag == True:
 
 			print "Entered minimization process."
 			print "Computing handoff poses..."
+			send_image(second_image)
 
 			# Minimize hand-off pose - minimization performed 5 times - MoveIt! planned 10 times each - to obtain different results
 			Trajectories = [[None]*3]*50 # [joint_angles,trajectory_plan,trajectory_time]
@@ -348,76 +430,97 @@ def main():
 
 			minimum_time_entry =  np.nanargmin(traj_time)
 
-			print "Least trajectory time: ", Trajectories[minimum_time_entry][2].secs + Trajectories[minimum_time_entry][2].nsecs/1e+9
+			if Trajectories[minimum_time_entry][1] != 0:
 
-			print "Executing least trajectory time."
-			group_both_arms.execute(Trajectories[minimum_time_entry][1])
+				q_before = group_both_arms.get_current_joint_values()
 
+				send_image(third_image)
 
-			# Create poses for cube to be seen in RViz using MoveIt!
-			pose_left = PoseStamped()
-			pose_right = PoseStamped()
+				print "Least trajectory time: ", Trajectories[minimum_time_entry][2].secs + Trajectories[minimum_time_entry][2].nsecs/1e+9
 
-			pose_left.header.frame_id = "left_gripper"
-			pose_left.pose.position = Point(*[0,0,0.07])
-			pose_left.pose.orientation = Quaternion(*[0,0,0,1])
-
-			pose_right.header.frame_id = "right_gripper"
-			pose_right.pose.position = Point(*[0,0,0.07])
-			pose_right.pose.orientation = Quaternion(*[0,0,0,1])
+				print "Executing least trajectory time."
+				group_both_arms.execute(Trajectories[minimum_time_entry][1])
 
 
-			# Swap cube from left to right grippers
-			if gripper_identifier == "left":
-				# Close right gripper, open left
-				right_gripper.close()
-				rospy.sleep(1)
-				left_gripper.open()
+				# Create poses for cube to be seen in RViz using MoveIt!
+				pose_left = PoseStamped()
+				pose_right = PoseStamped()
 
-				# Remove collision object from left gripper and place on right gripper
-				group_both_arms.detach_object("left_gripper")
-				rospy.sleep(1)
-				group_both_arms.attach_object("cube", "right_gripper")
-				rospy.sleep(1)
+				pose_left.header.frame_id = "left_gripper"
+				pose_left.pose.position = Point(*[0,0,0.07])
+				pose_left.pose.orientation = Quaternion(*[0,0,0,1])
 
-				# Move cube to right gripper for visualization purposes
-				scene.remove_attached_object("left_gripper")
-				rospy.sleep(1)
-				scene.remove_world_object("cube")
-				rospy.sleep(1)
-				scene.attach_box("right_gripper", "cube", pose_right, (0.06,0.06,0.06))
-				rospy.sleep(1)
+				pose_right.header.frame_id = "right_gripper"
+				pose_right.pose.position = Point(*[0,0,0.07])
+				pose_right.pose.orientation = Quaternion(*[0,0,0,1])
 
-				# Change identifier to be in right gripper now
-				gripper_identifier = "right"
 
+				# Swap cube from left to right grippers
+				if gripper_identifier == "left":
+					# Close right gripper, open left
+					right_gripper.close()
+					rospy.sleep(1)
+					if force_right_gripper == True:
+						left_gripper.open()
+
+					# Remove collision object from left gripper and place on right gripper
+					group_both_arms.detach_object("left_gripper")
+					rospy.sleep(1)
+					group_both_arms.attach_object("cube", "right_gripper")
+					rospy.sleep(1)
+
+					# Move cube to right gripper for visualization purposes
+					scene.remove_attached_object("left_gripper")
+					rospy.sleep(1)
+					scene.remove_world_object("cube")
+					rospy.sleep(1)
+					scene.attach_box("right_gripper", "cube", pose_right, (0.06,0.06,0.06))
+					rospy.sleep(1)
+
+					# Change identifier to be in right gripper now
+					gripper_identifier = "right"
+
+				# Swap cube from right to left gripper
+				elif gripper_identifier == "right":
+					# Close left gripper, open right
+					left_gripper.close()
+					rospy.sleep(1)
+					if force_left_gripper == True:
+						right_gripper.open()
+
+					# Remove collision object from right gripper and place on left gripper
+					group_both_arms.detach_object("right_gripper")
+					rospy.sleep(1)
+					group_both_arms.attach_object("cube", "left_gripper")
+					rospy.sleep(1)
+
+					# Move cube to left gripper for visualization purposes
+					scene.remove_attached_object("right_gripper")
+					rospy.sleep(1)
+					scene.remove_world_object("cube")
+					rospy.sleep(1)
+					scene.attach_box("left_gripper", "cube", pose_left, (0.06,0.06,0.06))
+					rospy.sleep(1)
+
+					# Change identifier to be in left gripper now
+					gripper_identifier = "left"
+
+
+				# Move both arms back to initial poses
+				group_both_arms.set_joint_value_target(q_before)
+
+				plan_both = group_both_arms.plan()
+				while len(plan_both.joint_trajectory.joint_names) == 0:
+					plan_both = group_both_arms.plan()
+
+				group_both_arms.execute(plan_both)
+				
 				print "Press button to do again."
 
-			# Swap cube from right to left gripper
-			elif gripper_identifier == "right":
-				# Close left gripper, open right
-				left_gripper.close()
-				rospy.sleep(1)
-				right_gripper.open()
+			else:
 
-				# Remove collision object from right gripper and place on left gripper
-				group_both_arms.detach_object("right_gripper")
-				rospy.sleep(1)
-				group_both_arms.attach_object("cube", "left_gripper")
-				rospy.sleep(1)
-
-				# Move cube to left gripper for visualization purposes
-				scene.remove_attached_object("right_gripper")
-				rospy.sleep(1)
-				scene.remove_world_object("cube")
-				rospy.sleep(1)
-				scene.attach_box("left_gripper", "cube", pose_left, (0.06,0.06,0.06))
-				rospy.sleep(1)
-
-				# Change identifier to be in left gripper now
-				gripper_identifier = "left"
-
-				print "Press button to do again."
+				send_image(fourth_image)
+				rospy.sleep(8)
 
 
 			# Specify that minimization process has completed
