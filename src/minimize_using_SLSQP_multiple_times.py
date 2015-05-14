@@ -346,7 +346,7 @@ def main():
 	# Initialization of KDL Kinematics for right and left grippers
 	rospack = rospkg.RosPack()
 	pkgpath = rospack.get_path('baxter_dual_arm_manipulation')
-	SUBDIR_URDF = "baxter.urdf"
+	SUBDIR_URDF = "src/baxter.urdf"
 	DIR_URDF = os.path.join(pkgpath, SUBDIR_URDF)
 
 	robot = URDF.from_xml_file(DIR_URDF)
