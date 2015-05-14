@@ -29,7 +29,7 @@ from baxter_interface import CHECK_VERSION
 from sensor_msgs.msg import Image
 
 
-global first_flag, force_left_gripper, force_right_gripper
+# global first_flag, force_left_gripper, force_right_gripper
 first_flag = False
 force_left_gripper = False
 force_right_gripper = False
@@ -256,14 +256,9 @@ def JointAnglesHandOffPose():
 
 # Listens for a button press to tell main to run the minimization process
 def checkButtonPress(msg):
-
-	state = msg.state
-
-	if state == True:
-
-		global first_flag
+	global first_flag
+	if msg.state and not first_flag:
 		first_flag = True
-
 	return
 
 
@@ -338,6 +333,7 @@ def main():
 
 	# Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
 	rospy.Subscriber("/robot/digital_io/left_itb_button1/state",DigitalIOState,checkButtonPress)
+	rospy.Subscriber("/robot/digital_io/right_itb_button1/state",DigitalIOState,checkButtonPress)
 
 	# Create a subscriber to determine if block was successfully transfered from one hand to the other
 	rospy.Subscriber("/robot/end_effector/left_gripper/state",EndEffectorState,checkForceLeftGripper)
@@ -372,6 +368,7 @@ def main():
 
 
 	# Continuously be listening for the flag to indicate to run the minimization process once
+	global first_flag
 	while not rospy.is_shutdown():
 
 		# Image telling to press the button to start minimization process
@@ -524,7 +521,6 @@ def main():
 
 
 			# Specify that minimization process has completed
-			global first_flag
 			first_flag = False
 
 
