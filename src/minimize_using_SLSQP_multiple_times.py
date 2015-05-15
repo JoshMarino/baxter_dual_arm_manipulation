@@ -326,13 +326,12 @@ def checkForceRightGripper(msg):
 
 # Send the image located at the specified path to the head display on Baxter.
 def send_image(path):
-
-    img = cv2.imread(path)
-    msg = cv_bridge.CvBridge().cv2_to_imgmsg(img, encoding="bgr8")
-    pub = rospy.Publisher('/robot/xdisplay', Image, latch=True, queue_size=1)
-    pub.publish(msg)
-    # Sleep to allow for image to be published.
-    rospy.sleep(1)
+	img = cv2.imread(path)
+	msg = cv_bridge.CvBridge().cv2_to_imgmsg(img, encoding="bgr8")
+	pub = rospy.Publisher('/robot/xdisplay', Image, latch=True, queue_size=1)
+	pub.publish(msg)
+	# Sleep to allow for image to be published.
+	rospy.sleep(1)
 
 
 
