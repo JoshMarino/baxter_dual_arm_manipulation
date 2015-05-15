@@ -55,6 +55,36 @@ def InitializeMoveitCommander():
 	scene = moveit_commander.PlanningSceneInterface()
 	rospy.sleep(1)
 
+	# Add in objects
+	p = PoseStamped()
+	p.header.frame_id = robot.get_planning_frame()
+	p.pose.position.x = 0.8
+	p.pose.position.y = 0.0
+	p.pose.position.z = -0.70
+	scene.add_box("table", p, (0.762, 1.239, 1.0))
+
+	# add right splash guard
+	p.pose.position.x = 0.8
+	p.pose.position.y = -1.239/2.0
+	p.pose.position.z = -.135
+	scene.add_box("right_guard", p, (0.762, 0.025, 0.127))
+
+
+	# add left splash guard
+	p.pose.position.x = 0.8
+	p.pose.position.y = 1.239/2.0
+	p.pose.position.z = -.135
+	scene.add_box("left_guard", p, (0.762, 0.025, 0.127))
+
+
+	# add back splash guard
+	p.pose.position.x = 0.8 - .762/2
+	p.pose.position.y = 0.0
+	p.pose.position.z = -.135
+	scene.add_box("back_guard", p, (.025, 1.239, 0.127))
+
+
+
 	#Instantiate a MoveGroupCommander object. This object is an interface to one group of joints. In this case the group is the joints in the left arm. This interface can be used to plan and execute motions on the left arm.
 	global group_both_arms, group_left_arm, group_right_arm
 	group_both_arms = MoveGroupCommander("both_arms")
@@ -224,7 +254,7 @@ def JointAnglesHandOffPose():
 	x0 = np.array([[random.uniform(bnds[i][0]/2.,bnds[i][1]/2.)] for i in range(14)])
 
 	# Constraint equality
-	Handoff_separation = np.array([[0.0],[0.12],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
+	Handoff_separation = np.array([[0.0],[0.25],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
 	cons = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]}, 							#x-sep-distance = 0
 			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]}, 						#y-sep-distance = 0
 			{'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]}, 						#z-sep-distance = 0.12
@@ -437,7 +467,6 @@ def main():
 
 				print "Executing least trajectory time."
 				group_both_arms.execute(Trajectories[minimum_time_entry][1])
-
 
 				# Create poses for cube to be seen in RViz using MoveIt!
 				pose_left = PoseStamped()
