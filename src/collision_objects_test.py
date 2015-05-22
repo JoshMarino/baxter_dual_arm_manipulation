@@ -61,19 +61,29 @@ class MoveItCollisionTest( object ):
         self.both_arm_group.set_goal_orientation_tolerance(0.01)
         self.both_arm_group.set_planning_time(5.0)
 
+        self.both_arm_group.set_joint_value_target(jt.targets['open'])
+        rospy.loginfo("Attempting to plan")
+        plan = self.both_arm_group.plan()
+        rospy.loginfo("Done with planning")
+
+        rospy.loginfo("Sleeping...")
+        rospy.sleep(5)
+        rospy.loginfo("Done sleeping")
+
+
+
         while not rospy.is_shutdown():
-            self.both_arm_group.set_joint_value_target(jt.targets['open'])
-            rospy.loginfo("Attempting to plan")
+            q = self.both_arm_group.get_random_joint_values()
+            self.both_arm_group.set_joint_value_target(q)
             plan = self.both_arm_group.plan()
-            rospy.loginfo("Done with planning")
 
-            rospy.loginfo("Sleeping...")
-            rospy.sleep(5)
-            rospy.loginfo("Done sleeping")
+            if not plan:
+                rospy.logwarn("No plan found")
+                continue
 
-            rospy.loginfo("Executing...")
-            self.both_arm_group.go()
-            rospy.loginfo("Done executing")
+            # rospy.loginfo("Executing...")
+            # self.both_arm_group.go()
+            # rospy.loginfo("Done executing")
 
             self.both_arm_group.set_joint_value_target(jt.targets['grasp'])
             rospy.loginfo("Attempting to plan")
@@ -84,9 +94,9 @@ class MoveItCollisionTest( object ):
             rospy.sleep(5)
             rospy.loginfo("Done sleeping")
 
-            rospy.loginfo("Executing...")
-            self.both_arm_group.go()
-            rospy.loginfo("Done executing")
+            # rospy.loginfo("Executing...")
+            # self.both_arm_group.go()
+            # rospy.loginfo("Done executing")
         
         return
         
