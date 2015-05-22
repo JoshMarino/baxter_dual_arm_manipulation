@@ -1,9 +1,41 @@
 <launch>
+  <!-- ARGUMENT DEFINITIONS -->
+  <arg name="vis" default="true" /> <!-- run rviz? -->
+  <arg name="sim" default="false" /> <!-- run gazebo? -->
 
-  <include file="$(find baxter_moveit_config)/launch/demo_baxter.launch"/>
 
+  <!-- start MoveIt! stuff:   -->
+  <include file="$(find baxter_moveit_config)/launch/planning_context.launch">
+	<arg name="load_robot_description" value="true"/>
+  </include>
+
+  <include file="$(find baxter_moveit_config)/launch/move_group.launch">
+	<arg name="allow_trajectory_execution" value="true"/>
+  </include>
+  <!-- <include file="$(find baxter_moveit_config)/launch/demo_baxter.launch"/> -->
+
+
+  <!-- start rviz if we should -->
+  <group if="$(arg vis)" >
+    <node pkg="rviz" type="rviz" respawn="false" name="rviz"
+	  args="-d $(find baxter_dual_arm_manipulation)/launch/dual_arm_manipulation_default.rviz" />
+  </group>
+
+
+  <!-- start Gazebo if we should -->
+  <group if="$(arg sim)" >
+	<include file="$(find baxter_gazebo)/launch/baxter_world.launch" />
+  </group>
+
+  
+  <!-- start built-in Baxter tools -->
   <node name="joint_traj_action_server" pkg="baxter_interface" type="joint_trajectory_action_server.py" respawn="false" />
   <node name="gripper_cuff_control" pkg="baxter_examples" type="gripper_cuff_control.py" respawn="false" />
-  <node name="baxter_moveit_planning" pkg="baxter_dual_arm_manipulation" type="minimize_using_SLSQP_multiple_times.py" respawn="true" output="screen" />
 
+
+  <!-- start node responsible for solving optimization and calling MoveIt!  --> 
+  <!-- <node name="baxter_moveit_planning" pkg="baxter_dual_arm_manipulation" type="minimize_using_SLSQP_multiple_times.py" respawn="true" output="screen" /> -->
+  <node name="testing_collision_objects" pkg="baxter_dual_arm_manipulation" type="collision_objects_test.py" respawn="true" output="screen" />
+
+  
 </launch>
