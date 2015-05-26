@@ -12,6 +12,7 @@ from pykdl_utils.kdl_kinematics import KDLKinematics
 # Baxter imports
 import baxter_interface
 from baxter_interface import CHECK_VERSION
+from baxter_core_msgs.msg import DigitalIOState
 # moveit stuff:
 import moveit_commander
 import moveit_msgs.msg
@@ -51,6 +52,11 @@ class MoveItCollisionTest( object ):
         self.left_arm_group = moveit_commander.MoveGroupCommander("left_arm")
         self.both_arm_group = moveit_commander.MoveGroupCommander("both_arms")
         # self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory)
+
+        # add displays for the start and goal states:
+        self.start_state_pub = rospy.Publisher("/move_group/start_state", moveit_msgs.msg.DisplayRobotState, queue_size=1)
+        self.end_state_pub = rospy.Publisher("/move_group/end_state", moveit_msgs.msg.DisplayRobotState, queue_size=1)
+
         rospy.sleep(3.0)
 
         # let's add world collision objects:
@@ -66,40 +72,85 @@ class MoveItCollisionTest( object ):
         plan = self.both_arm_group.plan()
         rospy.loginfo("Done with planning")
 
-        rospy.loginfo("Sleeping...")
-        rospy.sleep(5)
-        rospy.loginfo("Done sleeping")
+        # move the arms there:
+        self.both_arm_group.go()
+
+        # now create a subscriber for the button presses to decide if we should re-plan
+        self.button_sub = rospy.Subscriber("/robot/digital_io/left_lower_button/state", DigitalIOState,
+                                           self.button_cb, queue_size=1)
+        
+        # rospy.loginfo("Sleeping...")
+        # rospy.sleep(5)
+        # rospy.loginfo("Done sleeping")
 
 
+        # while not rospy.is_shutdown():
+        #     q = self.both_arm_group.get_random_joint_values()
+        #     self.both_arm_group.set_joint_value_target(q)
+        #     plan = self.both_arm_group.plan()
 
-        while not rospy.is_shutdown():
-            q = self.both_arm_group.get_random_joint_values()
-            self.both_arm_group.set_joint_value_target(q)
-            plan = self.both_arm_group.plan()
+        #     if not plan:
+        #         rospy.logwarn("No plan found")
+        #         continue
 
-            if not plan:
-                rospy.logwarn("No plan found")
-                continue
+        #     # rospy.loginfo("Executing...")
+        #     # self.both_arm_group.go()
+        #     # rospy.loginfo("Done executing")
 
-            # rospy.loginfo("Executing...")
-            # self.both_arm_group.go()
-            # rospy.loginfo("Done executing")
+        #     self.both_arm_group.set_joint_value_target(jt.targets['grasp'])
+        #     rospy.loginfo("Attempting to plan")
+        #     plan = self.both_arm_group.plan()
+        #     rospy.loginfo("Done with planning")
 
-            self.both_arm_group.set_joint_value_target(jt.targets['grasp'])
-            rospy.loginfo("Attempting to plan")
-            plan = self.both_arm_group.plan()
-            rospy.loginfo("Done with planning")
+        #     rospy.loginfo("Sleeping...")
+        #     rospy.sleep(5)
+        #     rospy.loginfo("Done sleeping")
 
-            rospy.loginfo("Sleeping...")
-            rospy.sleep(5)
-            rospy.loginfo("Done sleeping")
-
-            # rospy.loginfo("Executing...")
-            # self.both_arm_group.go()
-            # rospy.loginfo("Done executing")
+        #     # rospy.loginfo("Executing...")
+        #     # self.both_arm_group.go()
+        #     # rospy.loginfo("Done executing")
         
         return
-        
+
+    def button_cb(self, button_state):
+        if button_state.state:
+            self.random_plan_to_grasp(move=False)
+        return
+
+
+    def random_plan_to_grasp(self, move=False):
+        qrand = self.both_arm_group.get_random_joint_values()
+
+        for i in range(5):
+            # display start state:
+            start_state = moveit_msgs.msg.RobotState()
+            jss = JointState()
+            jss.name = self.both_arm_group.get_active_joints()
+            jss.position = qrand
+            start_state.joint_state = jss
+            dstart_state = moveit_msgs.msg.DisplayRobotState()
+            dstart_state.state = start_state
+            self.start_state_pub.publish(dstart_state)
+            # display goal state:
+            end_state = moveit_msgs.msg.RobotState()
+            jse = JointState()
+            jse.name,jse.position = zip(*[(key, val) for key,val in jt.targets['grasp'].items()])
+            end_state.joint_state = jse
+            dend_state = moveit_msgs.msg.DisplayRobotState()
+            dend_state.state = end_state
+            self.end_state_pub.publish(dend_state)
+        # plan and move
+        self.both_arm_group.set_start_state(start_state)
+        self.both_arm_group.set_joint_value_target(jt.targets['grasp'])
+        plan = self.both_arm_group.plan()
+        if not plan:
+            rospy.logwarn("No plan found")
+            return plan
+        if move:
+            rospy.loginfo("Executing...")
+            self.both_arm_group.go()
+            rospy.loginfo("Done executing")
+        return plan
         
     def clean_shutdown(self):
         print("\nExiting example...")
