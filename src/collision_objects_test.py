@@ -66,6 +66,9 @@ class MoveItCollisionTest( object ):
         self.both_arm_group.set_goal_position_tolerance(0.01)
         self.both_arm_group.set_goal_orientation_tolerance(0.01)
         self.both_arm_group.set_planning_time(5.0)
+        self.both_arm_group.allow_replanning(False)
+        # explicitly set the size of the steps in the planner:
+        rospy.set_param("move_group/both_arms/longest_valid_segment_fraction", 0.001)
 
         self.both_arm_group.set_joint_value_target(jt.targets['open'])
         rospy.loginfo("Attempting to plan")
@@ -78,6 +81,8 @@ class MoveItCollisionTest( object ):
         # now create a subscriber for the button presses to decide if we should re-plan
         self.button_sub = rospy.Subscriber("/robot/digital_io/left_lower_button/state", DigitalIOState,
                                            self.button_cb, queue_size=1)
+
+        # print "self.move_group."
         
         # rospy.loginfo("Sleeping...")
         # rospy.sleep(5)
@@ -119,8 +124,12 @@ class MoveItCollisionTest( object ):
 
 
     def random_plan_to_grasp(self, move=False):
-        qrand = self.both_arm_group.get_random_joint_values()
-
+        # qrand = self.both_arm_group.get_random_joint_values()
+        qrand = jt.targets['open'].values()
+        print "\r\n\r\n\r\n"
+        rospy.loginfo("======================================================================")
+        rospy.loginfo("Attempting a new plan")
+        rospy.loginfo("======================================================================")
         for i in range(5):
             # display start state:
             start_state = moveit_msgs.msg.RobotState()

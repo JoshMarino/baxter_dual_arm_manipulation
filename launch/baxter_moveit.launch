@@ -30,7 +30,7 @@
   
   <!-- start built-in Baxter tools -->
   <node name="joint_traj_action_server" pkg="baxter_interface" type="joint_trajectory_action_server.py" respawn="false" />
-  <node name="gripper_cuff_control" pkg="baxter_examples" type="gripper_cuff_control.py" respawn="false" />
+  <!-- <node name="gripper_cuff_control" pkg="baxter_examples" type="gripper_cuff_control.py" respawn="false" /> -->
 
 
   <!-- start node responsible for solving optimization and calling MoveIt!  --> 
