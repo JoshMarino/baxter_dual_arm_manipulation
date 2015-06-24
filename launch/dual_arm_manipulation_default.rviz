@@ -293,12 +293,12 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-        Loop Animation: true
+        Loop Animation: false
         Robot Alpha: 0.5
         Show Robot Collision: true
         Show Robot Visual: false
         Show Trail: false
-        State Display Time: 0.05 s
+        State Display Time: 0.0001 s
         Trajectory Topic: /move_group/display_planned_path
       Planning Metrics:
         Payload: 1
