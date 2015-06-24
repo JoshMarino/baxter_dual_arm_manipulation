@@ -20,8 +20,6 @@
         <joint name="left_hand" />
         <joint name="left_gripper_base" />
         <joint name="left_endpoint" />
-        <joint name="left_endpoint_left" />
-        <joint name="left_endpoint_right" />
     </group>
     <group name="right_arm">
         <joint name="right_s0" />
@@ -34,8 +32,6 @@
         <joint name="right_hand" />
         <joint name="right_gripper_base" />
         <joint name="right_endpoint" />
-        <joint name="right_endpoint_right" />
-        <joint name="right_endpoint_left" />
     </group>
     <group name="both_arms">
         <group name="right_arm" />
@@ -47,6 +43,7 @@
         <link name="left_gripper" />
         <link name="left_gripper_left" />
         <link name="left_gripper_right" />
+        <!-- <link name="block" /> -->
     </group>
     <group name="right_hand">
         <link name="right_hand" />
@@ -80,6 +77,9 @@
      <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <virtual_joint name="world_joint" type="floating" parent_frame="world" child_link="torso" />
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
+    <disable_collisions link1="collision_head_link_1" link2="display" reason="Adjacent" />
+    <disable_collisions link1="display" link2="collision_head_link_2" reason="Adjacent" />
+    <disable_collisions link1="display" link2="screen" reason="Adjacent" />
     <disable_collisions link1="collision_head_link_1" link2="collision_head_link_2" reason="Adjacent" />
     <disable_collisions link1="collision_head_link_1" link2="head" reason="Never" />
     <disable_collisions link1="collision_head_link_1" link2="left_lower_shoulder" reason="Never" />

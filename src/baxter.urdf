@@ -1110,7 +1110,7 @@
       <inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08"/>
     </inertial>
   </link>
-  <link name="block">
+  <!-- <link name="block">
  <gravity>0</gravity>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1132,7 +1132,7 @@
       <mass value="0.0001"/>
       <inertia ixx="1e-08" ixy="0" ixz="0" iyy="1e-08" iyz="0" izz="1e-08"/>
     </inertial>
-  </link>
+  </link> -->
   <joint name="left_torso_arm_mount" type="fixed">
     <origin rpy="0 0 0.7854" xyz="0.024645 0.219645 0.118588"/>
     <parent link="torso"/>
@@ -1259,11 +1259,11 @@
     <parent link="left_gripper"/>
     <child link="left_gripper_right"/>
   </joint>
-  <joint name="block" type="fixed">
+  <!-- <joint name="block" type="fixed">
     <origin rpy="0 0 0" xyz="0.0 0.0 0.05"/>
     <parent link="left_gripper"/>
     <child link="block"/>
-  </joint>
+  </joint> -->
 
   <!-- Transmissions -->
 
