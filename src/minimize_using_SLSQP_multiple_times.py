@@ -15,6 +15,7 @@ import cv2
 import cv_bridge
 import rospkg
 import os
+import time
 
 from scipy.optimize import minimize
 from math import sqrt
@@ -27,6 +28,8 @@ from moveit_commander import MoveGroupCommander
 from baxter_core_msgs.msg import (DigitalIOState, EndEffectorState)
 from baxter_interface import CHECK_VERSION
 from sensor_msgs.msg import Image
+from moveit_msgs.msg import RobotState, RobotTrajectory, DisplayTrajectory, DisplayRobotState, Constraints
+from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest, GetStateValidityResponse
 
 
 # global first_flag, force_left_gripper, force_right_gripper
@@ -70,16 +73,19 @@ def InitializeMoveitCommander():
     group_both_arms.set_goal_position_tolerance(0.01)
     group_both_arms.set_goal_orientation_tolerance(0.01)
     group_both_arms.set_planning_time(5.0)
+    group_both_arms.set_planner_id("SBLkConfigDefault")
 
     group_left_arm = MoveGroupCommander("left_arm")
     group_left_arm.set_goal_position_tolerance(0.01)
     group_left_arm.set_goal_orientation_tolerance(0.01)
     group_left_arm.set_planning_time(5.0)
+    group_left_arm.set_planner_id("SBLkConfigDefault")
 
     group_right_arm = MoveGroupCommander("right_arm")
     group_right_arm.set_goal_position_tolerance(0.01)
     group_right_arm.set_goal_orientation_tolerance(0.01)
     group_right_arm.set_planning_time(5.0)
+    group_right_arm.set_planner_id("SBLkConfigDefault")
 
     #We create this DisplayTrajectory publisher which is used below to publish trajectories for RVIZ to visualize.
     display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory)
@@ -234,7 +240,7 @@ def JointAnglesHandOffPose():
 
     # Constraint equality
 
-    Handoff_separation = np.array([[0.0],[0.12],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
+    Handoff_separation = np.array([[0.0],[0.25],[0.0],[math.pi/1.],[0],[-math.pi/2.]])
     cons = ({'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[9,0]  - Handoff_separation[0,0]},                          #x-sep-distance = 0
             {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[10,0]  - Handoff_separation[2,0]},                         #y-sep-distance = 0
             {'type': 'eq', 'fun': lambda q: JS_to_PrPlRrl(q)[11,0]  - Handoff_separation[1,0]},                         #z-sep-distance = 0.12
@@ -314,6 +320,38 @@ def send_image(path):
     rospy.sleep(1)
 
 
+def checkTrajectoryValidity(robot_trajectory, groups=[]):
+    """Given a robot trajectory, deduce it's groups and check it's validity on each point of the traj
+    returns True if valid, False otherwise
+    It's considered not valid if any point is not valid"""
+    rospy.wait_for_service('check_state_validity')
+    get_state_validity = rospy.ServiceProxy('check_state_validity', GetStateValidity)
+    #req = GetStateValidityRequest(rs,group)
+    if len(groups) > 0:
+        groups_to_check = groups
+    else:
+        groups_to_check = ['group_both_arms'] # Automagic group deduction... giving a group that includes everything
+    for traj_point in robot_trajectory.joint_trajectory.points:
+        rs = RobotState()
+        rs.joint_state.name = robot_trajectory.joint_trajectory.joint_names
+        rs.joint_state.position = traj_point.positions
+        constraints = Constraints()
+        for group in groups_to_check:
+            req = GetStateValidityRequest(rs, group, constraints)
+            resp = get_state_validity(req)
+            print "\n",resp,"\n"
+            if not resp.valid: # if one point is not valid, the trajectory is not valid
+                #rospy.logerr("Trajectory is not valid at point (RobotState):" + str(rs) + "with result of StateValidity: " + str(resp))
+                #rospy.logerr("published in /robot_collision_state the conflicting state")
+                #drs = DisplayRobotState()
+                #drs.state = rs
+                #self.robot_state_collision_pub.publish(drs)
+                return False
+    fin_time = time.time()
+    #rospy.logwarn("Trajectory validity of " + str(len(robot_trajectory.joint_trajectory.points)) + " points took " + str(fin_time - init_time))
+    return True
+
+
 
 # Main portion of code
 def main():
@@ -341,8 +379,10 @@ def main():
     right_gripper.open()
 
     # Create a subscriber to listen for a button press on Baxter which means to run the minimization process once.
-    rospy.Subscriber("/robot/digital_io/left_lower_button/state",DigitalIOState,checkButtonPress)
-    rospy.Subscriber("/robot/digital_io/right_lower_button/state",DigitalIOState,checkButtonPress)
+    #rospy.Subscriber("/robot/digital_io/left_lower_button/state",DigitalIOState,checkButtonPress)
+    #rospy.Subscriber("/robot/digital_io/right_lower_button/state",DigitalIOState,checkButtonPress)
+    rospy.Subscriber("/robot/digital_io/left_itb_button1/state",DigitalIOState,checkButtonPress)
+    rospy.Subscriber("/robot/digital_io/right_itb_button1/state",DigitalIOState,checkButtonPress)
 
     # Create a subscriber to determine if block was successfully transfered from one hand to the other
     rospy.Subscriber("/robot/end_effector/left_gripper/state",EndEffectorState,checkForceLeftGripper)
@@ -444,8 +484,84 @@ def main():
 
                 print "Least trajectory time: ", Trajectories[minimum_time_entry][2].secs + Trajectories[minimum_time_entry][2].nsecs/1e+9
 
+                print "Checking trajectory for validity: ", checkTrajectoryValidity(Trajectories[minimum_time_entry][1])
+
                 print "Executing least trajectory time."
                 group_both_arms.execute(Trajectories[minimum_time_entry][1])
+
+
+                # Change planner to smaller longest_valid_segment_fraction and plan to hand-off pose
+                group_both_arms.set_planner_id("SBLkConfigSmall")
+                group_left_arm.set_planner_id("SBLkConfigSmall")
+                group_right_arm.set_planner_id("SBLkConfigSmall")
+                group_both_arms.set_planning_time(5.0)
+                group_left_arm.set_planning_time(5.0)
+                group_right_arm.set_planning_time(5.0)
+                #rospy.sleep(1.5)
+
+                P = JS_to_PrPlRrl(Trajectories[minimum_time_entry][0])  #np.array([[x_left],[y_left],[z_left],[x_right],[y_right],[z_right],[roll],[pitch],[yaw],[sep_dist_x],[sep_dist_y],[sep_dist_z]])
+                P_left = JS_to_P(Trajectories[minimum_time_entry][0][0:7],'left') #np.array([[x],[y],[z],[roll],[pitch],[yaw]])
+                P_right = JS_to_P(Trajectories[minimum_time_entry][0][7:14],'right') #np.array([[x],[y],[z],[roll],[pitch],[yaw]])
+
+                x_dist = P[0,0] - P[3,0]
+                y_dist = P[1,0] - P[4,0]
+                z_dist = P[2,0] - P[5,0]
+
+                left_x = P[0,0] - (12.0/25.0)*x_dist/2.0
+                right_x = P[3,0] + (12.0/25.0)*x_dist/2.0
+
+                left_y = P[1,0] - (12.0/25.0)*y_dist/2.0
+                right_y = P[4,0] + (12.0/25.0)*y_dist/2.0
+
+                left_z = P[2,0] - (12.0/25.0)*z_dist/2.0
+                right_z = P[5,0] + (12.0/25.0)*z_dist/2.0
+
+                Trajectories1 = [[None]*2]*5 # [joint_angles,trajectory_plan,trajectory_time]
+
+                for i in range(2):
+                    group_both_arms.set_pose_target([left_x,left_y,left_z,P_left[3,0],P_left[4,0],P_left[5,0]],"left_gripper")
+                    group_both_arms.set_pose_target([right_x,right_y,right_z,P_right[3,0],P_right[4,0],P_right[5,0]],"right_gripper")
+
+                    plan_both = group_both_arms.plan()
+
+                    while len(plan_both.joint_trajectory.joint_names)==0:
+                        group_both_arms.set_pose_target([left_x,left_y,left_z,P_left[3,0],P_left[4,0],P_left[5,0]],"left_gripper")
+                        group_both_arms.set_pose_target([right_x,right_y,right_z,P_right[3,0],P_right[4,0],P_right[5,0]],"right_gripper")
+                        plan_both = group_both_arms.plan()
+
+
+                    if len(plan_both.joint_trajectory.joint_names) != 0:
+                        temp1 = plan_both
+                        temp2 = plan_both.joint_trajectory.points[len(plan_both.joint_trajectory.points)-1].time_from_start
+                    else:
+                        temp1 = 0
+                        temp2 = rospy.Time(10)
+
+                    # Storing trajectory plan, and trajectory time for comparison later
+                    Trajectories1[i] = [temp1,temp2]
+
+                # Find trajectory that took the least amount of time and execute it
+                traj_time1 = np.full(2,None)
+                for i in range(2):
+                    temp3 = Trajectories1[i][1]
+                    traj_time1[i] = temp3.secs + temp3.nsecs/1e9
+                print "Time for moving closer to each other:", traj_time1
+
+                minimum_time_entry = np.nanargmin(traj_time1)
+
+                print "Checking trajectory for validity: ", checkTrajectoryValidity(Trajectories1[minimum_time_entry][0])
+
+                group_both_arms.execute(Trajectories1[minimum_time_entry][0])
+
+                # Set planners back to default
+                group_both_arms.set_planner_id("SBLkConfigDefault")
+                group_left_arm.set_planner_id("SBLkConfigDefault")
+                group_right_arm.set_planner_id("SBLkConfigDefault")
+                group_both_arms.set_planning_time(5.0)
+                group_left_arm.set_planning_time(5.0)
+                group_right_arm.set_planning_time(5.0)
+
+
 
                 # Create poses for cube to be seen in RViz using MoveIt!
                 pose_left = PoseStamped()
@@ -514,26 +630,19 @@ def main():
                 # Move both arms back to initial poses
                 group_both_arms.set_joint_value_target(q_before)
 
-                # # let's write this to a file:
-                # f = open("/home/jarvis/joshws/src/baxter_dual_arm_manipulation/src/open_target.txt", 'w')
-                # for val in q_before:
-                #     line = "{0:f},\r\n".format(val)
-                #     f.write(line)
-                # f.close()
-
-
                 plan_both = group_both_arms.plan()
                 while len(plan_both.joint_trajectory.joint_names) == 0:
                     plan_both = group_both_arms.plan()
 
                 group_both_arms.execute(plan_both)
-                
+
+
                 print "Press button to do again."
 
             else:
 
                 send_image(fourth_image)
-                rospy.sleep(8)
+                rospy.sleep(5)
 
 
             # Specify that minimization process has completed
